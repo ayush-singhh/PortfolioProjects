@@ -1,3 +1,10 @@
+-- Cohort Retention Analysis - SQL.
+-- Performed Cohort Retention Analysis using MS SQL Server for an Online Retail platform, 
+-- demonstrating expertise in data cleaning, data wrangling, and advanced SQL analysis to determine
+-- the cohort retention rate. Developed a visually compelling dashboard in Tableau to effectively visualize the results.
+
+
+
 -- Data Cleaning
 
 -- Total Records = 541909
