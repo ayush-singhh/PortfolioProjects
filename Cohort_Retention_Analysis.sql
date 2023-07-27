@@ -59,94 +59,91 @@ From #clean_data_temp
 -- Points Required to do Cohort Retention Analysis
 -- 1. Unique Identifier (CustomerID)
 -- 2. Initial Start Date (First Invoice Date)
--- 3. Revenue Data
+-- 3. User activity Data
 
+-- Step 1: Creating Cohort Groups
+WITH cohort_group AS (
+    -- Identify the first purchase date for each customer and create cohorts based on the month and year of their first purchase
+    SELECT
+        [CustomerID],
+        MIN([InvoiceDate]) AS first_purchase_date,
+        DATEPART(YEAR, MIN([InvoiceDate])) AS cohort_year,
+        DATEPART(MONTH, MIN([InvoiceDate])) AS cohort_month
+    FROM
+        #clean_data_temp
+    GROUP BY
+        [CustomerID]
+),
 
--- Creating Cohort Groups
+-- Step 2: Calculating User Activity
+user_activity AS (
+    -- Joining cohort groups with the original transaction data to identify customer activity within their cohort
+    SELECT
+        c.[CustomerID],
+        c.cohort_year,
+        c.cohort_month,
+        DATEPART(YEAR, o.[InvoiceDate]) AS order_year,
+        DATEPART(MONTH, o.[InvoiceDate]) AS order_month,
+        order_year_diff = DATEPART(YEAR, o.[InvoiceDate]) - cohort_year,
+        order_month_diff = DATEPART(MONTH, o.[InvoiceDate]) - cohort_month
+    FROM
+        cohort_group c
+    LEFT JOIN
+        #clean_data_temp o ON c.[CustomerID] = o.[CustomerID]
+),
 
-Select 
-	CustomerID, 
-	min(InvoiceDate) As first_purchase, 
-	DATEFROMPARTS(year(min(InvoiceDate)), month(min(InvoiceDate)),1) As cohort_date
-Into #cohort
-From #clean_data_temp
-Group BY CustomerID
+-- Step 3: Create Cohort Index
+cohort_period AS (
+    -- Calculate a cohort index (period index) representing the number of months since the cohort's first purchase
+    SELECT 
+        [CustomerID],
+        cohort_year,
+        cohort_month,
+        order_year,
+        order_month,
+        order_year_diff,
+        order_month_diff,
+        cohort_index_akaPeriod = order_year_diff * 12 + order_month_diff + 1
+    FROM 
+        user_activity
+)
 
-Select * 
-From #cohort
+-- Step 4: Building Cohort Table
+SELECT 
+    DISTINCT CustomerID AS customer_number,
+    DATEFROMPARTS(cohort_year, cohort_month, 1) AS cohort_date,
+    cohort_index_akaPeriod
+INTO #cohorttable
+FROM 
+    cohort_period
+GROUP BY 
+    DATEFROMPARTS(cohort_year, cohort_month, 1),
+    cohort_index_akaPeriod,
+    CustomerID
+ORDER BY 
+    2, 3
 
--- Create Cohort Index
-
-Select 
-	mmm.*, 
-	cohort_index = year_diff * 12 + month_diff + 1
-Into #cohort_retention
-From (
-	Select 
-		mm.*, 
-		year_diff = invoice_year-cohort_year ,
-		month_diff= invoice_month-cohort_month
-	From (
-			Select 
-			m.*, 
-			c.cohort_date,
-			year(m.InvoiceDate) As invoice_year,
-			month(m.InvoiceDate) As invoice_month, 
-			year(c.cohort_date) As cohort_year,
-			MONTH(c.cohort_date) AS cohort_month
-			From #clean_data_temp m
-			Left Join #cohort c On m.CustomerID=c.CustomerID
-		) mm
-) mmm
-
-
--- Pivoting Data to see the cohort table
--- Cohort Retetion 
-
-Select *
-Into #cohort_pivot
-From (
-	Select 
-		Distinct CustomerID,
-		Cohort_date,
-		cohort_index
-	From #cohort_retention
-) tble
-Pivot (
-	Count(CustomerID)
-	For cohort_index In 
-	(  [1],
-		[2],
-		[3],
-		[4],
-		[5],
-		[6],
-		[7],
-		[8],
-		[9],
-		[10],
-		[11],
-		[12],
-		[13] )
-	) 
-AS Pivot_table
-
-
--- Cohort Retention Rate
-Select 
-		1.0 * [1]/[1] * 100 As [1],
-		1.0 * [2]/[1] * 100 As [2],
-		1.0 * [3]/[1] * 100 As [3],
-		1.0 * [4]/[1] * 100 As [4],
-		1.0 * [5]/[1] * 100 As [5],
-		1.0 * [6]/[1] * 100 As [6],
-		1.0 * [7]/[1] * 100 As [7],
-		1.0 * [8]/[1] * 100 As [8],
-		1.0 * [9]/[1] * 100 As [9],
-		1.0 * [10]/[1] * 100 As [10],
-		1.0 * [11]/[1] * 100 As [11],
-		1.0 * [12]/[1] * 100 As [12],
-		1.0 * [13]/[1] * 100 As [13]
-From #cohort_pivot
-Order By cohort_date
-
+-- Step 5: Pivot and Calculate Retention
+SELECT * 
+FROM #cohorttable
+PIVOT 
+(
+    COUNT(customer_number)
+    FOR cohort_index_akaPeriod 
+    IN (
+        [1],
+        [2],
+        [3],
+        [4],
+        [5],
+        [6],
+        [7],
+        [8],
+        [9],
+        [10],
+        [11],
+        [12],
+        [13]
+    )
+) AS pivot_table
+ORDER BY cohort_date;
